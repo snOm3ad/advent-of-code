@@ -55,7 +55,10 @@ pub fn run(part: Part) {
         Ok((Some(result_p1), Some(result_p2))) => {
             println!("part-one: {}  part-two: {}", result_p1, result_p2);
         }
-        _ => panic!("hmmmm"),
+        Ok((None, None)) => {
+            println!("how did you do this...");
+        }
+        Err(err) => eprintln!("[ERROR]: {}", err),
     }
 }
 
