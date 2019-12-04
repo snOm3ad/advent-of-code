@@ -7,16 +7,16 @@ pub enum Part {
     All,
 }
 
-fn main(part: Part) -> std::io::Result<(Option<usize>, Option<usize>)> {
-    let masses = read_file::<usize>("src/data/input.txt", 100)?;
+fn main(part: Part) -> [Option<usize>; 2] {
+    let masses = read_file::<usize>("src/data/input.txt", 100).unwrap();
     match part {
-        Part::One => Ok((Some(part_one(&masses)), None)),
-        Part::Two => Ok((None, Some(part_two(&masses)))),
-        _ => Ok((Some(part_one(&masses)), Some(part_two(&masses)))),
+        Part::One => [Some(part_one(&masses)), None],
+        Part::Two => [None, Some(part_two(&masses))],
+        _ => [Some(part_one(&masses)), Some(part_two(&masses))],
     }
 }
 
-fn part_one(masses: &Vec<usize>) -> usize {
+fn part_one(masses: &[usize]) -> usize {
     let required_fuel = masses
         .iter()
         .map(|mass| (mass / 3) - 2)
@@ -24,7 +24,7 @@ fn part_one(masses: &Vec<usize>) -> usize {
     required_fuel.iter().fold(0, |acc, x| acc + x)
 }
 
-fn part_two(masses: &Vec<usize>) -> usize {
+fn part_two(masses: &[usize]) -> usize {
     let required_fuel = masses
         .iter()
         .map(|mass| {
@@ -45,22 +45,30 @@ fn part_two(masses: &Vec<usize>) -> usize {
 
 #[cfg(any(feature = "all", feature = "day_one"))]
 pub fn run(part: Part) {
-    match main(part) {
-        Ok((Some(result_p1), None)) => {
-            println!("part-one: {}", result_p1);
+    let results = main(part);
+    for (idx, result) in results.iter().enumerate() {
+        if let Some(result) = result {
+            println!("result part({}): {}", idx + 1, result);
         }
-        Ok((None, Some(result_p2))) => {
-            println!("part-two: {}", result_p2);
-        }
-        Ok((Some(result_p1), Some(result_p2))) => {
-            println!("part-one: {}  part-two: {}", result_p1, result_p2);
-        }
-        Ok((None, None)) => {
-            println!("how did you do this...");
-        }
-        Err(err) => eprintln!("[ERROR]: {}", err),
     }
 }
 
 #[cfg(not(any(feature = "all", feature = "day_one")))]
 pub fn run(_: Part) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn part_one_works() {
+        let v = [100756];
+        assert_eq!(33583, part_one(&v));
+    }
+
+    #[test]
+    fn part_two_works() {
+        let v = [100756];
+        assert_eq!(50346, part_two(&v));
+    }
+}
