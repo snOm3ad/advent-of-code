@@ -9,5 +9,6 @@ edition = "2018"
 [features]
 all = []
 day_one = []
+day_two = []
 
 [dependencies]
