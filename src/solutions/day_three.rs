@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use array_tool::vec::Intersect;
+use std::collections::HashMap;
 use std::fs;
 use std::io;
 
@@ -134,7 +134,10 @@ fn trace_line(line: &Line) -> Vec<(isize, isize)> {
     }
 }
 
-fn orientation(p: &Point, q: &Point, r: &Point) -> Orientation {
+fn orientation(s: &(Point, Point), r: &Point) -> Orientation {
+    // extract the values
+    let (p, q) = s;
+    // calculate orientation
     let value = (q.1 - p.1) * (r.0 - q.0) - (q.0 - p.0) * (r.1 - q.1);
     match value {
         0 => Orientation::Colinear,
@@ -162,23 +165,24 @@ fn find_intersections(line_a: &Line, line_b: &Line) -> bool {
     let seg_a = convert_to_segment(line_a);
     let seg_b = convert_to_segment(line_b);
 
-    let o1 = orientation(&seg_a.0, &seg_a.1, &seg_b.0);
-    let o2 = orientation(&seg_a.0, &seg_a.1, &seg_b.1);
-    let o3 = orientation(&seg_b.0, &seg_b.1, &seg_a.0);
-    let o4 = orientation(&seg_b.0, &seg_b.1, &seg_a.1);
+    let o1 = orientation(&seg_a, &seg_b.0);
+    let o2 = orientation(&seg_a, &seg_b.1);
+    let o3 = orientation(&seg_b, &seg_a.0);
+    let o4 = orientation(&seg_b, &seg_a.1);
 
     o1 != o2 && o3 != o4
 }
 
 type Path = Vec<(isize, isize)>;
-fn find_intersection_points(wire_one: Path, wire_two: Path) -> Path {
-    let points = wire_one.intersect(wire_two);
-
-    if points.is_empty() {
-        return Vec::new();
+fn find_intersection_point(traced_line_a: &Path, traced_line_b: &Path) -> Option<(isize, isize)> {
+    for a in traced_line_a {
+        for b in traced_line_b {
+            if a == b {
+                return Some(*a);
+            }
+        }
     }
-
-    points.into_iter().collect::<Vec<_>>()
+    None
 }
 
 fn construct_path(w: Ray) -> Vec<Line> {
@@ -225,38 +229,41 @@ fn part_one(board: Board) -> isize {
     // Construct a vector of lines for each wire
     let untraced_path_a = construct_path(board.0);
     let untraced_path_b = construct_path(board.1);
-    let mut matches_a: Vec<usize> = Vec::new();
-    let mut matches_b: Vec<usize> = Vec::new();
+    let mut matches: Vec<(usize, usize)> = Vec::new();
 
     // check for every line in both paths if there exists an intersection.
     for (a, line_a) in untraced_path_a.iter().enumerate() {
         for (b, line_b) in untraced_path_b.iter().enumerate() {
             if find_intersections(line_a, line_b) {
-                matches_a.push(a);
-                matches_b.push(b);
+                matches.push((a, b));
             }
         }
     }
 
-    assert!(matches_a.len() == matches_b.len());
+    let mut intersections: Vec<(isize, isize)> = Vec::with_capacity(matches.len());
+    // cache the lines that we have traced.
+    let mut cached_traces: HashMap<(usize, usize), Vec<(isize, isize)>> = HashMap::new();
 
-    let traced_path_a = untraced_path_a
-        .iter()
-        .enumerate()
-        .filter(|(a, _)| matches_a.contains(a))
-        .map(|(_, line)| trace_line(line))
-        .flatten()
-        .collect::<Vec<_>>();
+    for (a, b) in matches {
+        // trace the line only if its not cached.
+        if cached_traces.get(&(0, a)).is_none() {
+            let trace = trace_line(&untraced_path_a[a]);
+            cached_traces.insert((0, a), trace);
+        }
 
-    let traced_path_b = untraced_path_b
-        .iter()
-        .enumerate()
-        .filter(|(b, _)| matches_b.contains(b))
-        .map(|(_, line)| trace_line(line))
-        .flatten()
-        .collect::<Vec<_>>();
+        if cached_traces.get(&(1, b)).is_none() {
+            let trace = trace_line(&untraced_path_b[b]);
+            cached_traces.insert((1, b), trace);
+        }
 
-    let intersections = find_intersection_points(traced_path_a, traced_path_b);
+        let traced_line_a = cached_traces.get(&(0, a)).unwrap();
+        let traced_line_b = cached_traces.get(&(1, b)).unwrap();
+
+        match find_intersection_point(traced_line_a, traced_line_b) {
+            Some(point) => intersections.push(point),
+            _ => continue,
+        }
+    }
 
     intersections
         .iter()
