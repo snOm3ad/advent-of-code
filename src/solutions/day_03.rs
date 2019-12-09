@@ -128,7 +128,7 @@ fn main(part: Part) -> io::Result<[Option<isize>; 2]> {
         }
         _ => {
             let one = Some(part_one(&board));
-            let two = Some(part_one(&board));
+            let two = Some(part_two(&board));
             Ok([one, two])
         }
     }

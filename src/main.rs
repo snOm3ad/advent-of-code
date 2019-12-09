@@ -8,5 +8,5 @@ use solutions::day_03;
 fn main() {
     day_01::run(day_01::Part::All);
     day_02::run(day_02::Part::All);
-    day_03::run(day_03::Part::Two);
+    day_03::run(day_03::Part::All);
 }
