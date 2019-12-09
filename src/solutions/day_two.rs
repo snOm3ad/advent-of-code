@@ -14,18 +14,13 @@ enum Command {
     Halt,
 }
 
-fn to_cell(v: Vec<usize>) -> Vec<Cell<usize>> {
-    v.into_iter().map(|x| Cell::new(x)).collect::<Vec<_>>()
-}
-
 fn main(part: Part) -> [Option<io::Result<usize>>; 2] {
     let raw_data = fs::read_to_string("src/data/opcode.txt").unwrap();
-    let opcodes = to_cell(
-        raw_data
-            .split(",")
-            .filter_map(|opcode| opcode.parse::<usize>().ok())
-            .collect::<Vec<_>>(),
-    );
+    let opcodes = raw_data
+        .split(",")
+        .filter_map(|opcode| opcode.parse::<usize>().ok())
+        .map(|opcode| Cell::new(opcode))
+        .collect::<Vec<_>>();
 
     const TARGET: usize = 19_690_720;
 
@@ -143,19 +138,31 @@ mod test {
 
     #[test]
     fn part_one_works_one() {
-        let v = to_cell(vec![1, 9, 10, 3, 2, 3, 11, 0, 99, 30, 40, 50]);
+        let v = vec![1, 9, 10, 3, 2, 3, 11, 0, 99, 30, 40, 50];
+        let v = v
+            .into_iter()
+            .map(|opcode| Cell::new(opcode))
+            .collect::<Vec<_>>();
         assert_eq!(3500, part_one(&v, None).unwrap());
     }
 
     #[test]
     fn part_one_works_two() {
-        let v = to_cell(vec![2, 4, 4, 5, 99, 0]);
+        let v = vec![2, 4, 4, 5, 99, 0];
+        let v = v
+            .into_iter()
+            .map(|opcode| Cell::new(opcode))
+            .collect::<Vec<_>>();
         assert_eq!(2, part_one(&v, None).unwrap());
     }
 
     #[test]
     fn part_one_works_three() {
-        let v = to_cell(vec![1, 1, 1, 4, 99, 5, 6, 0, 99]);
+        let v = vec![1, 1, 1, 4, 99, 5, 6, 0, 99];
+        let v = v
+            .into_iter()
+            .map(|opcode| Cell::new(opcode))
+            .collect::<Vec<_>>();
         assert_eq!(30, part_one(&v, None).unwrap());
     }
 }

@@ -10,5 +10,7 @@ edition = "2018"
 all = []
 day_one = []
 day_two = []
+day_three = []
 
 [dependencies]
+array_tool = "1.0"
