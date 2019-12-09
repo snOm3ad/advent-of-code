@@ -119,7 +119,7 @@ fn part_two(opcodes: &[Cell<usize>], target: usize) -> io::Result<usize> {
     part_one(&opcodes, Some(magic))
 }
 
-#[cfg(any(feature = "all", feature = "day_two"))]
+#[cfg(any(feature = "all", feature = "day_02"))]
 pub fn run(part: Part) {
     let results = main(part);
     for (idx, result) in results.iter().enumerate() {
@@ -129,7 +129,7 @@ pub fn run(part: Part) {
     }
 }
 
-#[cfg(not(any(feature = "all", feature = "day_two")))]
+#[cfg(not(any(feature = "all", feature = "day_02")))]
 pub fn run(_: Part) {}
 
 #[cfg(test)]

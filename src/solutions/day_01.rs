@@ -43,7 +43,7 @@ fn part_two(masses: &[usize]) -> usize {
     required_fuel.iter().fold(0, |acc, x| acc + x)
 }
 
-#[cfg(any(feature = "all", feature = "day_one"))]
+#[cfg(any(feature = "all", feature = "day_01"))]
 pub fn run(part: Part) {
     let results = main(part);
     for (idx, result) in results.iter().enumerate() {
@@ -53,7 +53,7 @@ pub fn run(part: Part) {
     }
 }
 
-#[cfg(not(any(feature = "all", feature = "day_one")))]
+#[cfg(not(any(feature = "all", feature = "day_01")))]
 pub fn run(_: Part) {}
 
 #[cfg(test)]

@@ -8,9 +8,8 @@ edition = "2018"
 
 [features]
 all = []
-day_one = []
-day_two = []
-day_three = []
+day_01 = []
+day_02 = []
+day_03 = []
 
 [dependencies]
-array_tool = "1.0"
