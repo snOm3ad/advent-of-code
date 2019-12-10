@@ -36,8 +36,7 @@ fn main(part: Part) -> [Option<usize>; 2] {
 }
 
 fn part_one(seq: &[Vec<u32>]) -> usize {
-    let seq = seq
-        .iter()
+    seq.iter()
         .filter(|num| {
             for d in num.windows(2) {
                 if d[0] > d[1] {
@@ -54,14 +53,11 @@ fn part_one(seq: &[Vec<u32>]) -> usize {
             }
             false
         })
-        .collect::<Vec<_>>();
-
-    seq.len()
+        .count()
 }
 
 fn part_two(seq: &[Vec<u32>]) -> usize {
-    let seq = seq
-        .iter()
+    seq.iter()
         .filter(|num| {
             for d in num.windows(2) {
                 if d[0] > d[1] {
@@ -80,9 +76,7 @@ fn part_two(seq: &[Vec<u32>]) -> usize {
             }
             digits.contains(&1)
         })
-        .collect::<Vec<_>>();
-
-    seq.len()
+        .count()
 }
 
 #[cfg(any(feature = "all", feature = "day_04"))]
