@@ -13,6 +13,11 @@ day_02 = []
 day_03 = []
 day_04 = []
 day_05 = []
+day_06 = []
 
+# technically, some of these are only needed for a specific challenges, and I know that you can 
+# add optional dependencies based on compilation features. however, I can't get rust syntastic to
+# work properly when using feature dependent dependencies.
 [dependencies]
 digits_iterator = "0.1"
+petgraph = "0.4"
