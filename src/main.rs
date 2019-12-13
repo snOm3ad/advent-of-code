@@ -1,3 +1,4 @@
+mod intcode;
 mod solutions;
 mod util;
 
@@ -7,6 +8,7 @@ use solutions::day_03;
 use solutions::day_04;
 use solutions::day_05;
 use solutions::day_06;
+use solutions::day_07;
 
 fn main() {
     day_01::run(day_01::Part::All);
@@ -15,4 +17,5 @@ fn main() {
     day_04::run(day_04::Part::All);
     day_05::run(day_05::Part::All);
     day_06::run(day_06::Part::All);
+    day_07::run(day_07::Part::One);
 }
