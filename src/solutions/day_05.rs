@@ -52,20 +52,17 @@ impl InstructionSet for IsetPartOne {
         type Cmd = Command<IsetPartOne>;
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
-            return Cmd::new(IsetPartOne::default(), value);
+            return Cmd::new(Self::default(), value);
         }
 
+        use IsetPartOne::*;
         match opcode {
-            [0, b, c, 0, 1] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartOne::Add(b, c), v))
-            }
-            [0, b, c, 0, 2] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartOne::Mul(b, c), v))
-            }
-            [0, 0, 0, 0, 3] => Cmd::new(IsetPartOne::In, value),
-            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(IsetPartOne::Out(p), v)),
-            [_, _, _, 9, 9] => Cmd::new(IsetPartOne::End, value),
-            [_, _, _, _, _] => Cmd::new(IsetPartOne::Data, value),
+            [0, b, c, 0, 1] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Add(b, c), v)),
+            [0, b, c, 0, 2] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Mul(b, c), v)),
+            [0, 0, 0, 0, 3] => Cmd::new(In, value),
+            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(Out(p), v)),
+            [_, _, _, 9, 9] => Cmd::new(End, value),
+            [_, _, _, _, _] => Cmd::new(Data, value),
         }
     }
 }
@@ -105,32 +102,21 @@ impl InstructionSet for IsetPartTwo {
         type Cmd = Command<IsetPartTwo>;
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
-            return Cmd::new(IsetPartTwo::default(), value);
+            return Cmd::new(Self::default(), value);
         }
 
+        use IsetPartTwo::*;
         match opcode {
-            [0, b, c, 0, 1] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Add(b, c), v))
-            }
-            [0, b, c, 0, 2] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Mul(b, c), v))
-            }
-            [0, 0, 0, 0, 3] => Cmd::new(IsetPartTwo::In, value),
-            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(IsetPartTwo::Out(p), v)),
-            [0, b, c, 0, 5] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Jne(b, c), v))
-            }
-            [0, b, c, 0, 6] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Je(b, c), v))
-            }
-            [0, b, c, 0, 7] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Leq(b, c), v))
-            }
-            [0, b, c, 0, 8] => {
-                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Cmp(b, c), v))
-            }
-            [_, _, _, 9, 9] => Cmd::new(IsetPartTwo::End, value),
-            [_, _, _, _, _] => Cmd::new(IsetPartTwo::Data, value),
+            [0, b, c, 0, 1] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Add(b, c), v)),
+            [0, b, c, 0, 2] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Mul(b, c), v)),
+            [0, 0, 0, 0, 3] => Cmd::new(In, value),
+            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(Out(p), v)),
+            [0, b, c, 0, 5] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Jne(b, c), v)),
+            [0, b, c, 0, 6] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Je(b, c), v)),
+            [0, b, c, 0, 7] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Leq(b, c), v)),
+            [0, b, c, 0, 8] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Cmp(b, c), v)),
+            [_, _, _, 9, 9] => Cmd::new(End, value),
+            [_, _, _, _, _] => Cmd::new(Data, value),
         }
     }
 }
@@ -546,11 +532,7 @@ mod test {
 
         #[test]
         fn easy() {
-            let raw_data = "1101,10,-8,4,0,2,5,2,1002,2,5,0,4,0,99";
-            let data = raw_data
-                .split(',')
-                .filter_map(|s| s.parse::<isize>().ok())
-                .collect::<Vec<_>>();
+            let data = vec![1101, 10, -8, 4, 0, 2, 5, 2, 1002, 2, 5, 0, 4, 0, 99];
             let inputs = [];
             assert_eq!(-80, part_one(&data, &inputs).unwrap());
         }
@@ -595,6 +577,7 @@ mod test {
                 .filter_map(|s| s.parse::<isize>().ok())
                 .collect::<Vec<_>>();
             let inputs = [8];
+            // outputs 1000 if input is 8, 999 if < 8 and 1001 if > 8.
             assert_eq!(1000, part_two(&data, &inputs).unwrap());
         }
     }
