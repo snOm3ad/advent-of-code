@@ -15,8 +15,12 @@ enum ParamMode {
     Address,
 }
 
+trait InstructionSet {
+    fn get_stride(&self) -> usize;
+}
+
 #[derive(Debug)]
-enum InstructionSetPartOne {
+enum IsetPartOne {
     Add(ParamMode, ParamMode),
     Mul(ParamMode, ParamMode),
     Out(ParamMode),
@@ -25,14 +29,25 @@ enum InstructionSetPartOne {
     Data,
 }
 
-impl Default for InstructionSetPartOne {
+impl Default for IsetPartOne {
     fn default() -> Self {
-        InstructionSetPartOne::Data
+        IsetPartOne::Data
+    }
+}
+
+impl InstructionSet for IsetPartOne {
+    fn get_stride(&self) -> usize {
+        use IsetPartOne::*;
+        match self {
+            Add(_, _) | Mul(_, _) => 3,
+            Out(_) | In => 1,
+            End | Data => 0,
+        }
     }
 }
 
 #[derive(Debug)]
-enum InstructionSetPartTwo {
+enum IsetPartTwo {
     Add(ParamMode, ParamMode),
     Mul(ParamMode, ParamMode),
     Out(ParamMode),
@@ -45,64 +60,49 @@ enum InstructionSetPartTwo {
     Data,
 }
 
-impl Default for InstructionSetPartTwo {
+impl Default for IsetPartTwo {
     fn default() -> Self {
-        InstructionSetPartTwo::Data
+        IsetPartTwo::Data
+    }
+}
+
+impl InstructionSet for IsetPartTwo {
+    fn get_stride(&self) -> usize {
+        use IsetPartTwo::*;
+        match self {
+            Add(_, _) | Mul(_, _) | Leq(_, _) | Cmp(_, _) => 3,
+            Jne(_, _) | Je(_, _) => 2,
+            Out(_) | In => 1,
+            End | Data => 0,
+        }
     }
 }
 
 #[derive(Debug)]
-enum InstructionSet {
-    PartOne(InstructionSetPartOne),
-    PartTwo(InstructionSetPartTwo),
-}
-
-#[derive(Debug)]
-struct Command {
-    iset: InstructionSet,
+struct Command<T: Default + InstructionSet> {
+    iset: T,
     stride: usize,
     value: isize,
 }
 
-impl Command {
-    fn new(iset: InstructionSet, value: isize) -> Self {
-        let stride = Self::get_stride(&iset);
-        Command {
+impl<T: Default + InstructionSet> Command<T> {
+    fn new(iset: T, value: isize) -> Self {
+        let stride = iset.get_stride();
+        Self {
             iset,
             stride,
             value,
         }
     }
-
-    fn get_stride(iset: &InstructionSet) -> usize {
-        match iset {
-            InstructionSet::PartOne(instruction) => {
-                use InstructionSetPartOne::*;
-                match instruction {
-                    Add(_, _) | Mul(_, _) => 3,
-                    Out(_) | In => 1,
-                    End | Data => 0,
-                }
-            }
-            InstructionSet::PartTwo(instruction) => {
-                use InstructionSetPartTwo::*;
-                match instruction {
-                    Add(_, _) | Mul(_, _) | Leq(_, _) | Cmp(_, _) => 3,
-                    Jne(_, _) | Je(_, _) => 2,
-                    Out(_) | In => 1,
-                    End | Data => 0,
-                }
-            }
-        }
-    }
 }
 
-fn parse_unary<F>(p: u8, value: isize, default: InstructionSet, gen: F) -> Command
+fn parse_unary<T, F>(p: u8, value: isize, gen: F) -> Command<T>
 where
-    F: FnOnce(ParamMode, isize) -> Command,
+    T: Default + InstructionSet,
+    F: FnOnce(ParamMode, isize) -> Command<T>,
 {
     if p > 1 {
-        return Command::new(default, value);
+        return Command::<T>::new(T::default(), value);
     }
 
     let p = match p {
@@ -114,13 +114,14 @@ where
     gen(p, value)
 }
 
-fn parse_binary<F>(b: u8, c: u8, value: isize, default: InstructionSet, gen: F) -> Command
+fn parse_binary<F, T>(b: u8, c: u8, value: isize, gen: F) -> Command<T>
 where
-    F: FnOnce(ParamMode, ParamMode, isize) -> Command,
+    T: Default + InstructionSet,
+    F: FnOnce(ParamMode, ParamMode, isize) -> Command<T>,
 {
     use ParamMode::*;
     if b > 1 || c > 1 {
-        return Command::new(default, value);
+        return Command::<T>::new(T::default(), value);
     }
 
     let (b, c) = match (b, c) {
@@ -136,96 +137,62 @@ where
 
 mod part_one {
     use super::*;
+    pub(super) type Cmd = Command<IsetPartOne>;
 
-    pub(super) fn process_opcode(opcode: &[u8; 5], value: isize) -> Command {
-        use InstructionSet::PartOne;
-        // the default
-        let default = PartOne(InstructionSetPartOne::Data);
+    pub(super) fn process_opcode(opcode: &[u8; 5], value: isize) -> Command<IsetPartOne> {
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
-            return Command::new(default, value);
+            return Cmd::new(IsetPartOne::default(), value);
         }
 
         match opcode {
             [0, b, c, 0, 1] => {
-                use InstructionSetPartOne::Add;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartOne(Add(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartOne::Add(b, c), v))
             }
             [0, b, c, 0, 2] => {
-                use InstructionSetPartOne::Mul;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartOne(Mul(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartOne::Mul(b, c), v))
             }
-            [0, 0, 0, 0, 3] => Command::new(PartOne(InstructionSetPartOne::In), value),
-            [0, 0, c, 0, 4] => {
-                use InstructionSetPartOne::Out;
-                parse_unary(*c, value, default, |p, v| Command::new(PartOne(Out(p)), v))
-            }
-            [_, _, _, 9, 9] => Command::new(PartOne(InstructionSetPartOne::End), value),
-            [_, _, _, _, _] => Command::new(PartOne(InstructionSetPartOne::Data), value),
+            [0, 0, 0, 0, 3] => Cmd::new(IsetPartOne::In, value),
+            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(IsetPartOne::Out(p), v)),
+            [_, _, _, 9, 9] => Cmd::new(IsetPartOne::End, value),
+            [_, _, _, _, _] => Cmd::new(IsetPartOne::Data, value),
         }
     }
 }
 
 mod part_two {
     use super::*;
+    pub(super) type Cmd = Command<IsetPartTwo>;
 
-    pub(super) fn process_opcode(opcode: &[u8; 5], value: isize) -> Command {
-        use InstructionSet::PartTwo;
-        // the default
-        let default = PartTwo(InstructionSetPartTwo::Data);
+    pub(super) fn process_opcode(opcode: &[u8; 5], value: isize) -> Command<IsetPartTwo> {
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
-            return Command::new(default, value);
+            return Cmd::new(IsetPartTwo::default(), value);
         }
 
         match opcode {
             [0, b, c, 0, 1] => {
-                use InstructionSetPartTwo::Add;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Add(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Add(b, c), v))
             }
             [0, b, c, 0, 2] => {
-                use InstructionSetPartTwo::Mul;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Mul(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Mul(b, c), v))
             }
-            [0, 0, 0, 0, 3] => Command::new(PartTwo(InstructionSetPartTwo::In), value),
-            [0, 0, c, 0, 4] => {
-                use InstructionSetPartTwo::Out;
-                parse_unary(*c, value, default, |p, v| Command::new(PartTwo(Out(p)), v))
-            }
+            [0, 0, 0, 0, 3] => Cmd::new(IsetPartTwo::In, value),
+            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(IsetPartTwo::Out(p), v)),
             [0, b, c, 0, 5] => {
-                use InstructionSetPartTwo::Jne;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Jne(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Jne(b, c), v))
             }
             [0, b, c, 0, 6] => {
-                use InstructionSetPartTwo::Je;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Je(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Je(b, c), v))
             }
             [0, b, c, 0, 7] => {
-                use InstructionSetPartTwo::Leq;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Leq(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Leq(b, c), v))
             }
             [0, b, c, 0, 8] => {
-                use InstructionSetPartTwo::Cmp;
-                parse_binary(*b, *c, value, default, |b, c, v| {
-                    Command::new(PartTwo(Cmp(b, c)), v)
-                })
+                parse_binary(*b, *c, value, |b, c, v| Cmd::new(IsetPartTwo::Cmp(b, c), v))
             }
-            [_, _, _, 9, 9] => Command::new(PartTwo(InstructionSetPartTwo::End), value),
-            [_, _, _, _, _] => Command::new(PartTwo(InstructionSetPartTwo::Data), value),
+            [_, _, _, 9, 9] => Cmd::new(IsetPartTwo::End, value),
+            [_, _, _, _, _] => Cmd::new(IsetPartTwo::Data, value),
         }
     }
 }
@@ -323,8 +290,8 @@ fn execute_binary_op_se<'a, T, F>(
 }
 
 fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
+    use part_two::Cmd;
     use wrapper::Instruction;
-    use InstructionSet::PartTwo;
 
     let program = data
         .iter()
@@ -344,7 +311,7 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
                 let instruction = program[rip].borrow();
                 part_two::process_opcode(&instruction.opcode, instruction.get_value())
             } else {
-                Command::new(PartTwo(InstructionSetPartTwo::End), 99)
+                Cmd::new(IsetPartTwo::End, 99)
             }
         };
 
@@ -356,93 +323,73 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
         rip += command.stride + 1;
 
         match command.iset {
-            PartTwo(instruction) => {
-                use InstructionSetPartTwo::*;
-                match instruction {
-                    End => break,
-                    Data => {
-                        let msg = format!(
-                            "program halted on invalid instruction, instruction value: {}",
-                            command.value
+            IsetPartTwo::End => break,
+            IsetPartTwo::Data => {
+                let msg = format!(
+                    "program halted on invalid instruction, instruction value: {}",
+                    command.value
+                );
+                let error = io::Error::new(io::ErrorKind::InvalidInput, msg);
+                return Err(error);
+            }
+            IsetPartTwo::Add(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| a + b)
+            }
+            IsetPartTwo::Mul(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| a * b)
+            }
+            IsetPartTwo::Leq(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| {
+                    (a < b) as isize
+                })
+            }
+            IsetPartTwo::Cmp(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| {
+                    (a == b) as isize
+                })
+            }
+            IsetPartTwo::Jne(mode_a, mode_b) => {
+                execute_binary_op_se(command_signature, (mode_a, mode_b), &program, |p, v| {
+                    if p != 0 {
+                        rip = v as usize;
+                    }
+                })
+            }
+            IsetPartTwo::Je(mode_a, mode_b) => {
+                execute_binary_op_se(command_signature, (mode_a, mode_b), &program, |p, v| {
+                    if p == 0 {
+                        rip = v as usize;
+                    }
+                })
+            }
+            IsetPartTwo::Out(mode) => match command_signature.next() {
+                Some(param) => {
+                    let output = process_parameter(&(param.borrow()), mode, &program);
+                    outputs.push(output);
+                }
+                _ => unreachable!(),
+            },
+            IsetPartTwo::In => {
+                let input = match inputs.next() {
+                    Some(input) => input,
+                    None => {
+                        let error = io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "program halted waiting for input.",
                         );
-                        let error = io::Error::new(io::ErrorKind::InvalidInput, msg);
                         return Err(error);
                     }
-                    Add(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| a + b,
-                    ),
-                    Mul(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| a * b,
-                    ),
-                    Leq(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| (a < b) as isize,
-                    ),
-                    Cmp(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| (a == b) as isize,
-                    ),
-                    Jne(mode_a, mode_b) => execute_binary_op_se(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |p, v| {
-                            if p != 0 {
-                                rip = v as usize;
-                            }
-                        },
-                    ),
-                    Je(mode_a, mode_b) => execute_binary_op_se(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |p, v| {
-                            if p == 0 {
-                                rip = v as usize;
-                            }
-                        },
-                    ),
-                    Out(mode) => match command_signature.next() {
-                        Some(param) => {
-                            let output = process_parameter(&(param.borrow()), mode, &program);
-                            outputs.push(output);
-                        }
-                        _ => unreachable!(),
-                    },
-                    In => {
-                        let input = match inputs.next() {
-                            Some(input) => input,
-                            None => {
-                                let error = io::Error::new(
-                                    io::ErrorKind::InvalidInput,
-                                    "program halted waiting for input.",
-                                );
-                                return Err(error);
-                            }
-                        };
+                };
 
-                        match command_signature.next() {
-                            Some(ptr) => {
-                                let write_addr = ptr.borrow().get_value() as usize;
-                                let mut instruction = program[write_addr].borrow_mut();
-                                instruction.update(*input);
-                            }
-                            _ => unreachable!(),
-                        }
+                match command_signature.next() {
+                    Some(ptr) => {
+                        let write_addr = ptr.borrow().get_value() as usize;
+                        let mut instruction = program[write_addr].borrow_mut();
+                        instruction.update(*input);
                     }
+                    _ => unreachable!(),
                 }
             }
-            _ => unreachable!(),
         }
     }
 
@@ -458,8 +405,8 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
 }
 
 fn part_one(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
+    use part_one::Cmd;
     use wrapper::Instruction;
-    use InstructionSet::PartOne;
 
     // NOTE: the reason why we create the program here is because we want to be able to re-use the
     // parsed data coming from the file.
@@ -483,7 +430,7 @@ fn part_one(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
                     let instruction = address.borrow();
                     part_one::process_opcode(&instruction.opcode, instruction.get_value())
                 }
-                None => Command::new(PartOne(InstructionSetPartOne::End), 99),
+                None => Cmd::new(IsetPartOne::End, 99),
             }
         };
 
@@ -492,65 +439,53 @@ fn part_one(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
 
         // now that we have the details of the command we execute it.
         match command.iset {
-            PartOne(instruction) => {
-                use InstructionSetPartOne::*;
-                match instruction {
-                    End => break,
-                    Data => {
-                        let msg = format!(
-                            "program halted on invalid instruction, instruction value: {}",
-                            command.value
+            IsetPartOne::End => break,
+            IsetPartOne::Data => {
+                let msg = format!(
+                    "program halted on invalid instruction, instruction value: {}",
+                    command.value
+                );
+                let error = io::Error::new(io::ErrorKind::Interrupted, msg);
+                return Err(error);
+            }
+            IsetPartOne::Add(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| a + b)
+            }
+            IsetPartOne::Mul(mode_a, mode_b) => {
+                execute_binary_op_nose(command_signature, (mode_a, mode_b), &program, |a, b| a * b)
+            }
+            IsetPartOne::Out(mode) => match command_signature.next() {
+                Some(param) => {
+                    let output = process_parameter(&(param.borrow()), mode, &program);
+                    outputs.push(output);
+                }
+                _ => unreachable!(),
+            },
+            IsetPartOne::In => {
+                // This one is also simple, grab the input from the inputs iterator, note that if
+                // we reach this instruction and the iterator has been exhausted something our
+                // program was wrong, hence we return an error.
+                let input = match inputs.next() {
+                    Some(input) => input,
+                    None => {
+                        let error = io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "program halted waiting for input.",
                         );
-                        let error = io::Error::new(io::ErrorKind::Interrupted, msg);
                         return Err(error);
                     }
-                    Add(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| a + b,
-                    ),
-                    Mul(mode_a, mode_b) => execute_binary_op_nose(
-                        command_signature,
-                        (mode_a, mode_b),
-                        &program,
-                        |a, b| a * b,
-                    ),
-                    Out(mode) => match command_signature.next() {
-                        Some(param) => {
-                            let output = process_parameter(&(param.borrow()), mode, &program);
-                            outputs.push(output);
-                        }
-                        _ => unreachable!(),
-                    },
-                    In => {
-                        // This one is also simple, grab the input from the inputs iterator, note that if
-                        // we reach this instruction and the iterator has been exhausted something our
-                        // program was wrong, hence we return an error.
-                        let input = match inputs.next() {
-                            Some(input) => input,
-                            None => {
-                                let error = io::Error::new(
-                                    io::ErrorKind::InvalidInput,
-                                    "program halted waiting for input.",
-                                );
-                                return Err(error);
-                            }
-                        };
+                };
 
-                        // the block iterator contains the a pointer to the address to which we write the input to.
-                        match command_signature.next() {
-                            Some(ptr) => {
-                                let write_addr = ptr.borrow().get_value() as usize;
-                                let mut instruction = program[write_addr].borrow_mut();
-                                instruction.update(*input);
-                            }
-                            _ => unreachable!(),
-                        }
+                // the block iterator contains the a pointer to the address to which we write the input to.
+                match command_signature.next() {
+                    Some(ptr) => {
+                        let write_addr = ptr.borrow().get_value() as usize;
+                        let mut instruction = program[write_addr].borrow_mut();
+                        instruction.update(*input);
                     }
+                    _ => unreachable!(),
                 }
             }
-            _ => unreachable!(),
         }
     }
 
