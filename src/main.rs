@@ -1,4 +1,5 @@
 mod intcode;
+mod opcodes;
 mod solutions;
 mod util;
 
