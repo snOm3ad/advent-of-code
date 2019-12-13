@@ -1,6 +1,8 @@
 use super::util::wrapper;
 use std::cell::{Ref, RefCell};
 
+pub mod opcodes;
+
 #[derive(Debug)]
 pub enum ParamMode {
     Immediate,
