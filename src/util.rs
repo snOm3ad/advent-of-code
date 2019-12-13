@@ -58,6 +58,9 @@ pub mod wrapper {
         }
 
         fn update_digits(&mut self) {
+            // need to clear the vector before doing anything, NOTE this has no effect on the
+            // allocated capacity.
+            self.digits.clear();
             // using the iterator avoids allocating memory for a new vector which is the desired
             // behavior. NOTE that digits will transform the isize to the respective unsigned
             // representation.
