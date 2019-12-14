@@ -22,4 +22,4 @@ day_07 = []
 [dependencies]
 digits_iterator = "0.1"
 petgraph = "0.4"
-rand = "0.7"
+permutohedron = "0.2"

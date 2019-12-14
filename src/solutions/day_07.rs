@@ -4,8 +4,7 @@ use crate::intcode;
 use crate::intcode::{Command, InstructionSet};
 use crate::opcodes::DefaultOpcodes;
 use crate::util::wrapper::Instruction;
-use rand::seq::SliceRandom;
-use std::collections::HashSet;
+use permutohedron::Heap;
 use std::{cell::RefCell, fs, io};
 
 pub enum Part {
@@ -151,33 +150,17 @@ fn run_intcode_program(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize>
 }
 
 fn part_one(data: &Vec<isize>) -> io::Result<isize> {
-    let mut rng = &mut rand::thread_rng();
-    let possible_phases: [isize; 5] = [0, 1, 2, 3, 4];
-    let powers = [10_000, 1000, 100, 10, 1];
-    let mut set = HashSet::<isize>::with_capacity(120);
+    let mut possible_phases: [isize; 5] = [0, 1, 2, 3, 4];
     let mut max_thrust = isize::min_value();
+    let permutations = Heap::new(&mut possible_phases);
 
-    // at this point we have tried all possible combinations
-    while set.len() < 120 {
-        let phases = possible_phases
-            .choose_multiple(&mut rng, 5)
-            .map(|e| *e)
-            .collect::<Vec<_>>();
-        // convert the phases array into a number, e.g. [0, 2, 3, 1, 4] -> 2314
-        let n = phases
-            .iter()
-            .enumerate()
-            .map(|(i, d)| powers[i] * d)
-            .fold(0, |acc, e| acc + e);
-        // only run the program if the given phases haven't been tested before.
-        if set.insert(n) {
-            let a = run_intcode_program(&data, &[phases[0], 0])?;
-            let b = run_intcode_program(&data, &[phases[1], a])?;
-            let c = run_intcode_program(&data, &[phases[2], b])?;
-            let d = run_intcode_program(&data, &[phases[3], c])?;
-            let e = run_intcode_program(&data, &[phases[4], d])?;
-            max_thrust = std::cmp::max(e, max_thrust);
-        }
+    for phases in permutations {
+        let a = run_intcode_program(&data, &[phases[0], 0])?;
+        let b = run_intcode_program(&data, &[phases[1], a])?;
+        let c = run_intcode_program(&data, &[phases[2], b])?;
+        let d = run_intcode_program(&data, &[phases[3], c])?;
+        let e = run_intcode_program(&data, &[phases[4], d])?;
+        max_thrust = std::cmp::max(e, max_thrust);
     }
 
     Ok(max_thrust)
