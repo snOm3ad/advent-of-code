@@ -1,5 +1,7 @@
 use super::intcode;
 use super::intcode::{Command, InstructionSet, ParamMode};
+use super::util::wrapper::Instruction;
+use std::{cell::RefCell, io};
 
 #[derive(Debug)]
 pub enum DefaultOpcodes {
@@ -54,4 +56,117 @@ impl InstructionSet for DefaultOpcodes {
             [_, _, _, _, _] => Cmd::new(Data, value),
         }
     }
+}
+
+pub fn default_runtime<F, G, R>(program_gen: F, handler: G, inputs: &[isize]) -> io::Result<R>
+where
+    F: FnOnce() -> Vec<RefCell<Instruction>>,
+    G: FnOnce(Vec<isize>) -> io::Result<R>,
+{
+    let program = program_gen();
+    let mut rip: usize = 0;
+    let mut outputs = Vec::<isize>::new();
+    let mut inputs = inputs.iter();
+
+    loop {
+        let command = {
+            if rip < program.len() {
+                let instruction = program[rip].borrow();
+                DefaultOpcodes::process_opcode(&instruction.opcode, instruction.get_value())
+            } else {
+                Command::<DefaultOpcodes>::new(DefaultOpcodes::End, 99)
+            }
+        };
+
+        let mut command_signature = program.iter().skip(rip + 1).take(command.stride);
+        rip += command.stride + 1;
+
+        match command.iset {
+            DefaultOpcodes::End => break,
+            DefaultOpcodes::Data => {
+                let msg = format!(
+                    "program halted unexpectedly on invalid instruction: intcode {}",
+                    command.value
+                );
+                let error = io::Error::new(io::ErrorKind::InvalidData, msg);
+                return Err(error);
+            }
+            DefaultOpcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| a + b,
+            ),
+            DefaultOpcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| a * b,
+            ),
+            DefaultOpcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| (a < b) as isize,
+            ),
+            DefaultOpcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| (a == b) as isize,
+            ),
+            DefaultOpcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |p, v| {
+                    if p != 0 {
+                        rip = v as usize;
+                    }
+                },
+            ),
+            DefaultOpcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |p, v| {
+                    if p == 0 {
+                        rip = v as usize;
+                    }
+                },
+            ),
+            DefaultOpcodes::Out(p) => match command_signature.next() {
+                Some(ptr) => {
+                    let output = intcode::process_parameter(&(ptr.borrow()), p, &program);
+                    outputs.push(output);
+                }
+                _ => unreachable!(),
+            },
+            DefaultOpcodes::In => {
+                let input = {
+                    match inputs.next() {
+                        Some(input) => input,
+                        None => {
+                            let error = io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "program halted waiting for input",
+                            );
+                            return Err(error);
+                        }
+                    }
+                };
+
+                match command_signature.next() {
+                    Some(ptr) => {
+                        let addr = ptr.borrow().get_value() as usize;
+                        let mut instruction = program[addr].borrow_mut();
+                        instruction.update(*input);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    handler(outputs)
 }
