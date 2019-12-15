@@ -15,6 +15,7 @@ day_04 = []
 day_05 = []
 day_06 = []
 day_07 = []
+day_08 = []
 
 # technically, some of these are only needed for a specific challenges, and I know that you can 
 # add optional dependencies based on compilation features. however, I can't get rust syntastic to

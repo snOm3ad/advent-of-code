@@ -20,5 +20,5 @@ fn main() {
     day_05::run(day_05::Part::All);
     day_06::run(day_06::Part::All);
     day_07::run(day_07::Part::All);
-    day_08::run(day_08::Part::One);
+    day_08::run(day_08::Part::All);
 }
