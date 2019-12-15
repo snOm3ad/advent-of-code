@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{fs, io};
+use std::{fmt, fs, io};
 
 pub enum Part {
     One,
@@ -8,7 +8,17 @@ pub enum Part {
     All,
 }
 
-fn main(part: Part) -> io::Result<[Option<usize>; 2]> {
+enum Results<T, V>
+where
+    T: fmt::Display,
+    V: fmt::Display,
+{
+    One(T),
+    Two(V),
+    Empty,
+}
+
+fn main(part: Part) -> io::Result<[Results<usize, String>; 2]> {
     let raw_data = fs::read_to_string("src/data/image.txt")?;
     let data = raw_data
         .chars()
@@ -20,17 +30,17 @@ fn main(part: Part) -> io::Result<[Option<usize>; 2]> {
 
     match part {
         Part::One => {
-            let one = Some(part_one(&data, &dims)?);
-            Ok([one, None])
+            let one = Results::One(part_one(&data, &dims)?);
+            Ok([one, Results::Empty])
         }
         Part::Two => {
-            part_two(&data, &dims)?;
-            Ok([None, Some(0)])
+            let two = Results::Two(part_two(&data, &dims)?);
+            Ok([Results::Empty, two])
         }
         Part::All => {
-            let one = Some(part_one(&data, &dims)?);
-            part_two(&data, &dims)?;
-            Ok([one, Some(0)])
+            let one = Results::One(part_one(&data, &dims)?);
+            let two = Results::Two(part_two(&data, &dims)?);
+            Ok([one, two])
         }
     }
 }
@@ -93,9 +103,10 @@ fn part_one(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<usize> {
     }
 }
 
-fn part_two(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<()> {
+fn part_two(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<String> {
     // get the layers for the image.
     let layers = layer_up(data, dims)?;
+    let mut image = String::with_capacity(2 * dims.0 * dims.1 + dims.1);
     // for every (row, col) i.e. pixel go through the layers in order to determine
     // the color of it.
     for cpos in 0..dims.1 {
@@ -103,11 +114,11 @@ fn part_two(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<()> {
             for layer in layers.iter() {
                 match layer.get_pixel_value(rpos, cpos) {
                     0 => {
-                        print!(". ");
+                        image.push_str(". ");
                         break;
                     }
                     1 => {
-                        print!("# ");
+                        image.push_str("# ");
                         break;
                     }
                     2 => continue,
@@ -115,10 +126,10 @@ fn part_two(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<()> {
                 }
             }
         }
-        println!();
+        image.push('\n');
     }
 
-    Ok(())
+    Ok(image)
 }
 
 #[cfg(any(feature = "all", feature = "day_08"))]
@@ -126,8 +137,10 @@ pub fn run(part: Part) {
     match main(part) {
         Ok(results) => {
             for (i, result) in results.iter().enumerate() {
-                if let Some(r) = result {
-                    println!("result-part({}): {}", i + 1, r);
+                match result {
+                    Results::One(r) => println!("result-part({}): {}", i + 1, r),
+                    Results::Two(r) => println!("result-part({}):\n{}", i + 1, r),
+                    Results::Empty => {}
                 }
             }
         }
