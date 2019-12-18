@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
-use crate::opcodes;
+use crate::intcode;
+use crate::intcode::{Command, InstructionSet, ParamMode};
 use crate::util::wrapper::Instruction;
 use permutohedron::Heap;
-use std::{cell::RefCell, fs, io};
+use std::{cell::RefCell, convert::TryFrom, fs, io, marker::PhantomData};
 
 pub enum Part {
     One,
@@ -35,43 +36,8 @@ fn main(part: Part) -> io::Result<[Option<isize>; 2]> {
     }
 }
 
-fn part_one(data: &Vec<isize>) -> io::Result<isize> {
-    let mut possible_phases: [isize; 5] = [0, 1, 2, 3, 4];
-    let mut max_thrust = isize::min_value();
-    let permutations = Heap::new(&mut possible_phases);
-
-    // program generator, produces a brand new program everytime it is called.
-    let generator = || {
-        data.iter()
-            .map(|e| Instruction::new(*e))
-            .map(|e| RefCell::new(e))
-            .collect::<Vec<_>>()
-    };
-
-    // output handler
-    let handler = |outputs: Vec<isize>| -> io::Result<isize> {
-        if outputs.len() != 1 {
-            let msg = format!("expected a single output, received {}", outputs.len());
-            let error = io::Error::new(io::ErrorKind::Other, msg);
-            return Err(error);
-        }
-
-        Ok(*outputs.first().unwrap())
-    };
-
-    for phases in permutations {
-        let a = opcodes::default_runtime(generator, handler, &[phases[0], 0])?;
-        let b = opcodes::default_runtime(generator, handler, &[phases[1], a])?;
-        let c = opcodes::default_runtime(generator, handler, &[phases[2], b])?;
-        let d = opcodes::default_runtime(generator, handler, &[phases[3], c])?;
-        let e = opcodes::default_runtime(generator, handler, &[phases[4], d])?;
-        max_thrust = std::cmp::max(e, max_thrust);
-    }
-
-    Ok(max_thrust)
-}
-
-struct Process {
+struct Process<T: InstructionSet> {
+    marker: PhantomData<T>,
     rip: usize,
     halted: bool,
     resumed: bool,
@@ -79,9 +45,233 @@ struct Process {
     program: Vec<RefCell<Instruction>>,
 }
 
-impl Process {
+enum Opcodes {
+    Add(ParamMode, ParamMode),
+    Mul(ParamMode, ParamMode),
+    Out(ParamMode),
+    Jne(ParamMode, ParamMode),
+    Je(ParamMode, ParamMode),
+    Leq(ParamMode, ParamMode),
+    Cmp(ParamMode, ParamMode),
+    In,
+    End,
+    Data,
+}
+
+impl Default for Opcodes {
+    fn default() -> Self {
+        Opcodes::Data
+    }
+}
+
+impl InstructionSet for Opcodes {
+    fn get_stride(&self) -> usize {
+        use Opcodes::*;
+        match self {
+            Add(_, _) | Mul(_, _) | Leq(_, _) | Cmp(_, _) => 3,
+            Jne(_, _) | Je(_, _) => 2,
+            Out(_) | In => 1,
+            End | Data => 0,
+        }
+    }
+
+    fn parse<F>(params: [u8; 3], rbase: &isize, value: isize, gen: F) -> Command<Opcodes>
+    where
+        F: FnOnce([ParamMode; 3]) -> Command<Opcodes>,
+    {
+        let map = [
+            ParamMode::Address(0),
+            ParamMode::Immediate,
+            ParamMode::Address(*rbase),
+        ];
+
+        match params {
+            [0, b, c] if c < 2 && b < 2 => gen([map[0], map[b as usize], map[c as usize]]),
+            [2, b, c] if b < 2 && c < 2 => gen([map[2], map[b as usize], map[c as usize]]),
+            [_, _, _] => Command::<Self>::new(Self::default(), value),
+        }
+    }
+
+    fn process_opcode(opcode: &[u8; 5], rbase: &isize, value: isize) -> Command<Opcodes> {
+        type Cmd = Command<Opcodes>;
+        // if the value is less than zero then it for sure isn't an instruction.
+        if value < 0 {
+            return Cmd::new(Self::default(), value);
+        }
+
+        let params = <[u8; 3]>::try_from(&opcode[..3]).unwrap();
+        let instruction = <[u8; 2]>::try_from(&opcode[3..]).unwrap();
+
+        match instruction {
+            [0, 1] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Add(b, c), value),
+            }),
+            [0, 2] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Mul(b, c), value),
+            }),
+            [0, 3] => Cmd::new(Opcodes::In, value),
+            [0, 4] => Self::parse(params, rbase, value, |p| match p {
+                [_, _, c] => Cmd::new(Opcodes::Out(c), value),
+            }),
+            [0, 5] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Jne(b, c), value),
+            }),
+            [0, 6] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Je(b, c), value),
+            }),
+            [0, 7] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Leq(b, c), value),
+            }),
+            [0, 8] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(Opcodes::Cmp(b, c), value),
+            }),
+            [9, 9] => Cmd::new(Opcodes::End, value),
+            [_, _] => Cmd::new(Opcodes::Data, value),
+        }
+    }
+}
+
+pub fn default_runtime(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
+    let program = data
+        .iter()
+        .map(|e| Instruction::new(*e))
+        .map(|e| RefCell::new(e))
+        .collect::<Vec<_>>();
+    let mut rip: usize = 0;
+    let mut outputs = Vec::<isize>::new();
+    let mut inputs = inputs.iter();
+
+    loop {
+        let command = {
+            if rip < program.len() {
+                let instruction = program[rip].borrow();
+                Opcodes::process_opcode(&instruction.opcode, &0, instruction.get_value())
+            } else {
+                Command::<Opcodes>::new(Opcodes::End, 99)
+            }
+        };
+
+        let mut command_signature = program.iter().skip(rip + 1).take(command.stride);
+        rip += command.stride + 1;
+
+        match command.iset {
+            Opcodes::End => break,
+            Opcodes::Data => {
+                let msg = format!(
+                    "program halted unexpectedly on invalid instruction: intcode {}",
+                    command.value
+                );
+                let error = io::Error::new(io::ErrorKind::InvalidData, msg);
+                return Err(error);
+            }
+            Opcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| a + b,
+            ),
+            Opcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| a * b,
+            ),
+            Opcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| (a < b) as isize,
+            ),
+            Opcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |a, b| (a == b) as isize,
+            ),
+            Opcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |p, v| {
+                    if p != 0 {
+                        rip = v as usize;
+                    }
+                },
+            ),
+            Opcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+                command_signature,
+                (mode_a, mode_b),
+                &program,
+                |p, v| {
+                    if p == 0 {
+                        rip = v as usize;
+                    }
+                },
+            ),
+            Opcodes::Out(p) => match command_signature.next() {
+                Some(ptr) => {
+                    let output = intcode::process_parameter(&(ptr.borrow()), p, &program);
+                    outputs.push(output);
+                }
+                _ => unreachable!(),
+            },
+            Opcodes::In => {
+                let input = {
+                    match inputs.next() {
+                        Some(input) => input,
+                        None => {
+                            let error = io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "program halted waiting for input",
+                            );
+                            return Err(error);
+                        }
+                    }
+                };
+
+                match command_signature.next() {
+                    Some(ptr) => {
+                        let addr = ptr.borrow().get_value() as usize;
+                        let mut instruction = program[addr].borrow_mut();
+                        instruction.update(*input);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    if outputs.len() != 1 {
+        let msg = format!("expected a single output, received {}", outputs.len());
+        let error = io::Error::new(io::ErrorKind::Other, msg);
+        return Err(error);
+    }
+
+    Ok(*outputs.first().unwrap())
+}
+
+fn part_one(data: &Vec<isize>) -> io::Result<isize> {
+    type Proc = Process<Opcodes>;
+    let mut possible_phases: [isize; 5] = [0, 1, 2, 3, 4];
+    let mut max_thrust = isize::min_value();
+    let permutations = Heap::new(&mut possible_phases);
+
+    for phases in permutations {
+        let a = default_runtime(&data, &[phases[0], 0])?;
+        let b = default_runtime(&data, &[phases[1], a])?;
+        let c = default_runtime(&data, &[phases[2], b])?;
+        let d = default_runtime(&data, &[phases[3], c])?;
+        let e = default_runtime(&data, &[phases[4], d])?;
+        max_thrust = std::cmp::max(e, max_thrust);
+    }
+
+    Ok(max_thrust)
+}
+
+impl Process<Opcodes> {
     fn new(program: Vec<RefCell<Instruction>>) -> Self {
         Self {
+            marker: PhantomData,
             rip: 0,
             halted: false,
             resumed: false,
@@ -91,10 +281,7 @@ impl Process {
     }
 
     fn run<'a, T: Iterator<Item = &'a isize>>(&mut self, mut inputs: T) -> io::Result<isize> {
-        use crate::intcode;
-        use crate::intcode::{Command, InstructionSet};
-        use crate::opcodes::DefaultOpcodes;
-        type Cmd = Command<DefaultOpcodes>;
+        type Cmd = Command<Opcodes>;
 
         // we need a local copy or rip, because otherwise the JNE and JE closures will require
         // `self.rip` but this will conflict because we already take a mutable reference to `self`
@@ -108,7 +295,7 @@ impl Process {
             let command = {
                 if rip < self.program.len() {
                     let instruction = self.program[rip].borrow();
-                    DefaultOpcodes::process_opcode(&instruction.opcode, instruction.get_value())
+                    Opcodes::process_opcode(&instruction.opcode, &0, instruction.get_value())
                 } else {
                     // NOTE: here we can no longer force the end the program, we have to return an
                     // error cause the program we received was ill-formed!
@@ -123,13 +310,13 @@ impl Process {
             rip += command.stride + 1;
 
             match command.iset {
-                DefaultOpcodes::End => {
+                Opcodes::End => {
                     // we need to know if the program stopped due to an output or because we hit
                     // an `End` opcode, which indicates that we finished execution.
                     self.halted = true;
                     break;
                 }
-                DefaultOpcodes::Data => {
+                Opcodes::Data => {
                     let msg = format!(
                         "program halted on illegal instruction, intcode: {}",
                         command.value
@@ -137,31 +324,31 @@ impl Process {
                     let error = io::Error::new(io::ErrorKind::InvalidData, msg);
                     return Err(error);
                 }
-                DefaultOpcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
                     |a, b| a + b,
                 ),
-                DefaultOpcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
                     |a, b| a * b,
                 ),
-                DefaultOpcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
                     |a, b| (a < b) as isize,
                 ),
-                DefaultOpcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
                     |a, b| (a == b) as isize,
                 ),
-                DefaultOpcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+                Opcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
@@ -171,7 +358,7 @@ impl Process {
                         }
                     },
                 ),
-                DefaultOpcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+                Opcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
                     command_signature,
                     (mode_a, mode_b),
                     &self.program,
@@ -181,7 +368,7 @@ impl Process {
                         }
                     },
                 ),
-                DefaultOpcodes::Out(mode) => match command_signature.next() {
+                Opcodes::Out(mode) => match command_signature.next() {
                     Some(ptr) => {
                         // store the result as part of the state.
                         self.outputs.push(intcode::process_parameter(
@@ -193,7 +380,7 @@ impl Process {
                     }
                     _ => unreachable!(),
                 },
-                DefaultOpcodes::In => {
+                Opcodes::In => {
                     // if the program has not been resumed, then we read the phase input. otherwise
                     // we read the feedback input.
                     // THE BUG IS HERE.
@@ -239,6 +426,7 @@ impl Process {
 }
 
 fn part_two(data: &Vec<isize>) -> io::Result<isize> {
+    type Proc = Process<Opcodes>;
     // for part-two, things get a little more contrived.
     let mut possible_phases: [isize; 5] = [5, 6, 7, 8, 9];
     let mut max_thrust = isize::min_value();
@@ -255,12 +443,12 @@ fn part_two(data: &Vec<isize>) -> io::Result<isize> {
         // one input vector for each thruster. reseted at every new `phases` permutation
         let mut inputs: [[isize; 2]; 5] = [[0; 2]; 5];
         // unfortunately, we need to generate these at every new permutation.
-        let mut processes: [Process; 5] = [
-            Process::new(gen()),
-            Process::new(gen()),
-            Process::new(gen()),
-            Process::new(gen()),
-            Process::new(gen()),
+        let mut processes: [Proc; 5] = [
+            Proc::new(gen()),
+            Proc::new(gen()),
+            Proc::new(gen()),
+            Proc::new(gen()),
+            Proc::new(gen()),
         ];
 
         // collecting using iterators will have to change the type of the inputs collection, which

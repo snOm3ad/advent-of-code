@@ -8,17 +8,7 @@ pub enum Part {
     All,
 }
 
-enum Results<T, V>
-where
-    T: fmt::Display,
-    V: fmt::Display,
-{
-    One(T),
-    Two(V),
-    Empty,
-}
-
-fn main(part: Part) -> io::Result<[Results<usize, String>; 2]> {
+fn main(part: Part) -> io::Result<[Option<Box<dyn fmt::Display>>; 2]> {
     let raw_data = fs::read_to_string("src/data/image.txt")?;
     let data = raw_data
         .chars()
@@ -30,17 +20,17 @@ fn main(part: Part) -> io::Result<[Results<usize, String>; 2]> {
 
     match part {
         Part::One => {
-            let one = Results::One(part_one(&data, &dims)?);
-            Ok([one, Results::Empty])
+            let one = Box::new(part_one(&data, &dims)?);
+            Ok([Some(one), None])
         }
         Part::Two => {
-            let two = Results::Two(part_two(&data, &dims)?);
-            Ok([Results::Empty, two])
+            let two = Box::new(part_two(&data, &dims)?);
+            Ok([None, Some(two)])
         }
         Part::All => {
-            let one = Results::One(part_one(&data, &dims)?);
-            let two = Results::Two(part_two(&data, &dims)?);
-            Ok([one, two])
+            let one = Box::new(part_one(&data, &dims)?);
+            let two = Box::new(part_two(&data, &dims)?);
+            Ok([Some(one), Some(two)])
         }
     }
 }
@@ -126,7 +116,9 @@ fn part_two(data: &Vec<usize>, dims: &(usize, usize)) -> io::Result<String> {
                 }
             }
         }
-        image.push('\n');
+        if cpos != dims.1 - 1 {
+            image.push('\n');
+        }
     }
 
     Ok(image)
@@ -137,10 +129,8 @@ pub fn run(part: Part) {
     match main(part) {
         Ok(results) => {
             for (i, result) in results.iter().enumerate() {
-                match result {
-                    Results::One(r) => println!("result-part({}): {}", i + 1, r),
-                    Results::Two(r) => println!("result-part({}):\n{}", i + 1, r),
-                    Results::Empty => {}
+                if let Some(r) = result {
+                    println!("result-part({}):\n{}", i + 1, *r);
                 }
             }
         }

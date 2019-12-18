@@ -3,6 +3,7 @@
 use crate::intcode;
 use crate::intcode::{Command, InstructionSet, ParamMode};
 use crate::util::wrapper;
+use std::convert::TryFrom;
 use std::{cell::RefCell, fs, io};
 
 pub enum Part {
@@ -37,22 +38,46 @@ impl InstructionSet for IsetPartOne {
         }
     }
 
-    fn process_opcode(opcode: &[u8; 5], value: isize) -> Command<IsetPartOne> {
-        use intcode::{parse_binary, parse_unary};
+    fn parse<F>(params: [u8; 3], rbase: &isize, value: isize, gen: F) -> Command<Self>
+    where
+        F: FnOnce([ParamMode; 3]) -> Command<Self>,
+    {
+        let map = [
+            ParamMode::Address(0),
+            ParamMode::Immediate,
+            ParamMode::Address(*rbase),
+        ];
+
+        match params {
+            [0, b, c] if b < 2 && c < 2 => gen([map[0], map[b as usize], map[c as usize]]),
+            [_, _, _] => Command::<Self>::new(Self::default(), value),
+        }
+    }
+
+    fn process_opcode(opcode: &[u8; 5], rbase: &isize, value: isize) -> Command<IsetPartOne> {
         type Cmd = Command<IsetPartOne>;
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
             return Cmd::new(Self::default(), value);
         }
 
-        use IsetPartOne::*;
-        match opcode {
-            [0, b, c, 0, 1] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Add(b, c), v)),
-            [0, b, c, 0, 2] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Mul(b, c), v)),
-            [0, 0, 0, 0, 3] => Cmd::new(In, value),
-            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(Out(p), v)),
-            [_, _, _, 9, 9] => Cmd::new(End, value),
-            [_, _, _, _, _] => Cmd::new(Data, value),
+        // there's no way these could fail, so unwrapping is ok.
+        let params = <[u8; 3]>::try_from(&opcode[..3]).unwrap();
+        let instruction = <[u8; 2]>::try_from(&opcode[3..]).unwrap();
+
+        match instruction {
+            [0, 1] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartOne::Add(b, c), value),
+            }),
+            [0, 2] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartOne::Mul(b, c), value),
+            }),
+            [0, 3] => Cmd::new(IsetPartOne::In, value),
+            [0, 4] => Self::parse(params, rbase, value, |p| match p {
+                [_, _, c] => Cmd::new(IsetPartOne::Out(c), value),
+            }),
+            [9, 9] => Cmd::new(IsetPartOne::End, value),
+            [_, _] => Cmd::new(IsetPartOne::Data, value),
         }
     }
 }
@@ -88,26 +113,57 @@ impl InstructionSet for IsetPartTwo {
         }
     }
 
-    fn process_opcode(opcode: &[u8; 5], value: isize) -> Command<IsetPartTwo> {
-        use intcode::{parse_binary, parse_unary};
+    fn parse<F>(params: [u8; 3], rbase: &isize, value: isize, gen: F) -> Command<Self>
+    where
+        F: FnOnce([ParamMode; 3]) -> Command<Self>,
+    {
+        let map = [
+            ParamMode::Address(0),
+            ParamMode::Immediate,
+            ParamMode::Address(*rbase),
+        ];
+
+        match params {
+            [0, b, c] if b < 2 && c < 2 => gen([map[0], map[b as usize], map[c as usize]]),
+            [_, _, _] => Command::<Self>::new(Self::default(), value),
+        }
+    }
+
+    fn process_opcode(opcode: &[u8; 5], rbase: &isize, value: isize) -> Command<IsetPartTwo> {
         type Cmd = Command<IsetPartTwo>;
         // if the value is less than zero then it for sure isn't an instruction.
         if value < 0 {
             return Cmd::new(Self::default(), value);
         }
 
-        use IsetPartTwo::*;
-        match opcode {
-            [0, b, c, 0, 1] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Add(b, c), v)),
-            [0, b, c, 0, 2] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Mul(b, c), v)),
-            [0, 0, 0, 0, 3] => Cmd::new(In, value),
-            [0, 0, c, 0, 4] => parse_unary(*c, value, |p, v| Cmd::new(Out(p), v)),
-            [0, b, c, 0, 5] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Jne(b, c), v)),
-            [0, b, c, 0, 6] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Je(b, c), v)),
-            [0, b, c, 0, 7] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Leq(b, c), v)),
-            [0, b, c, 0, 8] => parse_binary(*b, *c, value, |b, c, v| Cmd::new(Cmp(b, c), v)),
-            [_, _, _, 9, 9] => Cmd::new(End, value),
-            [_, _, _, _, _] => Cmd::new(Data, value),
+        let instruction = <[u8; 2]>::try_from(&opcode[3..]).unwrap();
+        let params = <[u8; 3]>::try_from(&opcode[..3]).unwrap();
+
+        match instruction {
+            [0, 1] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Add(b, c), value),
+            }),
+            [0, 2] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Mul(b, c), value),
+            }),
+            [0, 3] => Cmd::new(IsetPartTwo::In, value),
+            [0, 4] => Self::parse(params, rbase, value, |p| match p {
+                [_, _, c] => Cmd::new(IsetPartTwo::Out(c), value),
+            }),
+            [0, 5] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Jne(b, c), value),
+            }),
+            [0, 6] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Je(b, c), value),
+            }),
+            [0, 7] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Leq(b, c), value),
+            }),
+            [0, 8] => Self::parse(params, rbase, value, |p| match p {
+                [_, b, c] => Cmd::new(IsetPartTwo::Cmp(b, c), value),
+            }),
+            [9, 9] => Cmd::new(IsetPartTwo::End, value),
+            [_, _] => Cmd::new(IsetPartTwo::Data, value),
         }
     }
 }
@@ -158,7 +214,7 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
         let command = {
             if rip < program.len() {
                 let instruction = program[rip].borrow();
-                IsetPartTwo::process_opcode(&instruction.opcode, instruction.get_value())
+                IsetPartTwo::process_opcode(&instruction.opcode, &0, instruction.get_value())
             } else {
                 Command::<IsetPartTwo>::new(IsetPartTwo::End, 99)
             }
@@ -290,7 +346,7 @@ fn part_one(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
             match rip.next() {
                 Some(address) => {
                     let instruction = address.borrow();
-                    IsetPartOne::process_opcode(&instruction.opcode, instruction.get_value())
+                    IsetPartOne::process_opcode(&instruction.opcode, &0, instruction.get_value())
                 }
                 None => Command::<IsetPartOne>::new(IsetPartOne::End, 99),
             }

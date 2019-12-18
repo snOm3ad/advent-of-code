@@ -1,17 +1,26 @@
 use super::util::wrapper;
 use std::cell::{Ref, RefCell};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ParamMode {
     Immediate,
-    Address,
+    Address(isize),
 }
 
 pub trait InstructionSet {
+    /// determines the stride, i.e. total number of parameters a given instruction needs
     fn get_stride(&self) -> usize;
-    fn process_opcode(_: &[u8; 5], _: isize) -> Command<Self>
+
+    /// determines the appropriate instruction from a given opcode
+    fn process_opcode(_: &[u8; 5], rbase: &isize, value: isize) -> Command<Self>
     where
         Self: Default;
+
+    /// parses arguments of a given opcode
+    fn parse<F>(params: [u8; 3], rbase: &isize, value: isize, gen: F) -> Command<Self>
+    where
+        Self: Default,
+        F: FnOnce([ParamMode; 3]) -> Command<Self>;
 }
 
 #[derive(Debug)]
@@ -32,60 +41,29 @@ impl<T: Default + InstructionSet> Command<T> {
     }
 }
 
-pub fn parse_unary<T, F>(p: u8, value: isize, gen: F) -> Command<T>
-where
-    T: Default + InstructionSet,
-    F: FnOnce(ParamMode, isize) -> Command<T>,
-{
-    if p > 1 {
-        return Command::<T>::new(T::default(), value);
-    }
-
-    let p = match p {
-        0 => ParamMode::Address,
-        1 => ParamMode::Immediate,
-        _ => unreachable!(),
-    };
-
-    gen(p, value)
-}
-
-pub fn parse_binary<F, T>(b: u8, c: u8, value: isize, gen: F) -> Command<T>
-where
-    T: Default + InstructionSet,
-    F: FnOnce(ParamMode, ParamMode, isize) -> Command<T>,
-{
-    use ParamMode::*;
-    if b > 1 || c > 1 {
-        return Command::<T>::new(T::default(), value);
-    }
-
-    let (b, c) = match (b, c) {
-        (0, 0) => (Address, Address),
-        (1, 1) => (Immediate, Immediate),
-        (0, 1) => (Address, Immediate),
-        (1, 0) => (Immediate, Address),
-        (_, _) => unreachable!(),
-    };
-
-    gen(b, c, value)
-}
-
 pub fn process_parameter<'a>(
     ptr: &Ref<'a, wrapper::Instruction>,
     mode: ParamMode,
     program: &Vec<RefCell<wrapper::Instruction>>,
 ) -> isize {
     match mode {
-        ParamMode::Address => {
+        ParamMode::Address(0) => {
             let addr = ptr.get_value() as usize;
             let cell = program[addr].borrow();
             cell.get_value()
         }
         ParamMode::Immediate => ptr.get_value(),
+        ParamMode::Address(rb) => {
+            let offset = ptr.get_value();
+            let addr = (rb + offset) as usize;
+            let cell = program[addr].borrow();
+            cell.get_value()
+        }
     }
 }
 
+/// Executes binary operation with **no** side effect, the binary operation is required to return a
+/// result which is written to the specified address of the third parameter.
 pub fn execute_binary_op_nose<'a, T, F>(
     mut block: T,
     modes: (ParamMode, ParamMode),
@@ -114,6 +92,7 @@ pub fn execute_binary_op_nose<'a, T, F>(
     instruction.update(binary_op(param_one, param_two));
 }
 
+/// Executes binary operation with side effect, the binary operation returns `()`
 pub fn execute_binary_op_se<'a, T, F>(
     mut block: T,
     modes: (ParamMode, ParamMode),
