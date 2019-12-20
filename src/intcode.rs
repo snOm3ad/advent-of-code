@@ -42,23 +42,18 @@ impl<T: Default + InstructionSet> Command<T> {
 }
 
 pub fn process_parameter<'a>(
-    ptr: &Ref<'a, wrapper::Instruction>,
+    ptr: Ref<'a, wrapper::Instruction>,
     mode: ParamMode,
     program: &Vec<RefCell<wrapper::Instruction>>,
 ) -> isize {
     match mode {
-        ParamMode::Address(0) => {
-            let addr = ptr.get_value() as usize;
+        ParamMode::Address(rbase) => {
+            let offset = ptr.get_value();
+            let addr = (rbase + offset) as usize;
             let cell = program[addr].borrow();
             cell.get_value()
         }
         ParamMode::Immediate => ptr.get_value(),
-        ParamMode::Address(rb) => {
-            let offset = ptr.get_value();
-            let addr = (rb + offset) as usize;
-            let cell = program[addr].borrow();
-            cell.get_value()
-        }
     }
 }
 
@@ -66,26 +61,29 @@ pub fn process_parameter<'a>(
 /// result which is written to the specified address of the third parameter.
 pub fn execute_binary_op_nose<'a, T, F>(
     mut block: T,
-    modes: (ParamMode, ParamMode),
+    modes: (ParamMode, ParamMode, ParamMode),
     program: &Vec<RefCell<wrapper::Instruction>>,
     binary_op: F,
 ) where
     T: Iterator<Item = &'a RefCell<wrapper::Instruction>>,
     F: FnOnce(isize, isize) -> isize,
 {
-    let param_one = match block.next() {
-        Some(p) => process_parameter(&(p.borrow()), modes.1, program),
-        _ => unreachable!(),
-    };
+    let cell = block.next().unwrap();
+    let param_one = process_parameter(cell.borrow(), modes.2, program);
 
-    let param_two = match block.next() {
-        Some(p) => process_parameter(&(p.borrow()), modes.0, program),
-        _ => unreachable!(),
-    };
+    let cell = block.next().unwrap();
+    let param_two = process_parameter(cell.borrow(), modes.1, program);
 
-    let address = match block.next() {
-        Some(ptr) => ptr.borrow().get_value() as usize,
-        _ => unreachable!(),
+    let cell = block.next().unwrap();
+    let address = {
+        match modes.0 {
+            ParamMode::Address(rbase) => {
+                // when rbase == 0, then this is same as getting the value directly from the cell.
+                let offset = cell.borrow().get_value();
+                (rbase + offset) as usize
+            }
+            ParamMode::Immediate => unreachable!(),
+        }
     };
 
     let mut instruction = program[address].borrow_mut();
@@ -102,15 +100,11 @@ pub fn execute_binary_op_se<'a, T, F>(
     T: Iterator<Item = &'a RefCell<wrapper::Instruction>>,
     F: FnOnce(isize, isize),
 {
-    let param_one = match block.next() {
-        Some(p) => process_parameter(&(p.borrow()), modes.1, program),
-        _ => unreachable!(),
-    };
+    let cell = block.next().unwrap();
+    let param_one = process_parameter(cell.borrow(), modes.1, program);
 
-    let param_two = match block.next() {
-        Some(p) => process_parameter(&(p.borrow()), modes.0, program),
-        _ => unreachable!(),
-    };
+    let cell = block.next().unwrap();
+    let param_two = process_parameter(cell.borrow(), modes.0, program);
 
     binary_op(param_one, param_two);
 }

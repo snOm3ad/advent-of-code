@@ -164,33 +164,33 @@ pub fn default_runtime(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize>
                 let error = io::Error::new(io::ErrorKind::InvalidData, msg);
                 return Err(error);
             }
-            Opcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            Opcodes::Add(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a + b,
             ),
-            Opcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            Opcodes::Mul(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a * b,
             ),
-            Opcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            Opcodes::Leq(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| (a < b) as isize,
             ),
-            Opcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            Opcodes::Cmp(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| (a == b) as isize,
             ),
-            Opcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+            Opcodes::Jne(mode_b, mode_c) => intcode::execute_binary_op_se(
                 command_signature,
-                (mode_a, mode_b),
+                (mode_b, mode_c),
                 &program,
                 |p, v| {
                     if p != 0 {
@@ -198,9 +198,9 @@ pub fn default_runtime(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize>
                     }
                 },
             ),
-            Opcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+            Opcodes::Je(mode_b, mode_c) => intcode::execute_binary_op_se(
                 command_signature,
-                (mode_a, mode_b),
+                (mode_b, mode_c),
                 &program,
                 |p, v| {
                     if p == 0 {
@@ -210,7 +210,7 @@ pub fn default_runtime(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize>
             ),
             Opcodes::Out(p) => match command_signature.next() {
                 Some(ptr) => {
-                    let output = intcode::process_parameter(&(ptr.borrow()), p, &program);
+                    let output = intcode::process_parameter(ptr.borrow(), p, &program);
                     outputs.push(output);
                 }
                 _ => unreachable!(),
@@ -282,7 +282,6 @@ impl Process<Opcodes> {
 
     fn run<'a, T: Iterator<Item = &'a isize>>(&mut self, mut inputs: T) -> io::Result<isize> {
         type Cmd = Command<Opcodes>;
-
         // we need a local copy or rip, because otherwise the JNE and JE closures will require
         // `self.rip` but this will conflict because we already take a mutable reference to `self`
         // when we call `self.program.iter().skip().take()`.
@@ -324,33 +323,33 @@ impl Process<Opcodes> {
                     let error = io::Error::new(io::ErrorKind::InvalidData, msg);
                     return Err(error);
                 }
-                Opcodes::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Add(mode_b, mode_c) => intcode::execute_binary_op_nose(
                     command_signature,
-                    (mode_a, mode_b),
+                    (ParamMode::Address(0), mode_b, mode_c),
                     &self.program,
                     |a, b| a + b,
                 ),
-                Opcodes::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Mul(mode_b, mode_c) => intcode::execute_binary_op_nose(
                     command_signature,
-                    (mode_a, mode_b),
+                    (ParamMode::Address(0), mode_b, mode_c),
                     &self.program,
                     |a, b| a * b,
                 ),
-                Opcodes::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Leq(mode_b, mode_c) => intcode::execute_binary_op_nose(
                     command_signature,
-                    (mode_a, mode_b),
+                    (ParamMode::Address(0), mode_b, mode_c),
                     &self.program,
                     |a, b| (a < b) as isize,
                 ),
-                Opcodes::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+                Opcodes::Cmp(mode_b, mode_c) => intcode::execute_binary_op_nose(
                     command_signature,
-                    (mode_a, mode_b),
+                    (ParamMode::Address(0), mode_b, mode_c),
                     &self.program,
                     |a, b| (a == b) as isize,
                 ),
-                Opcodes::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+                Opcodes::Jne(mode_b, mode_c) => intcode::execute_binary_op_se(
                     command_signature,
-                    (mode_a, mode_b),
+                    (mode_b, mode_c),
                     &self.program,
                     |p, v| {
                         if p != 0 {
@@ -358,9 +357,9 @@ impl Process<Opcodes> {
                         }
                     },
                 ),
-                Opcodes::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+                Opcodes::Je(mode_b, mode_c) => intcode::execute_binary_op_se(
                     command_signature,
-                    (mode_a, mode_b),
+                    (mode_b, mode_c),
                     &self.program,
                     |p, v| {
                         if p == 0 {
@@ -372,7 +371,7 @@ impl Process<Opcodes> {
                     Some(ptr) => {
                         // store the result as part of the state.
                         self.outputs.push(intcode::process_parameter(
-                            &(ptr.borrow()),
+                            ptr.borrow(),
                             mode,
                             &self.program,
                         ));

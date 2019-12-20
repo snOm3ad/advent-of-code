@@ -237,33 +237,33 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
                 let error = io::Error::new(io::ErrorKind::InvalidInput, msg);
                 return Err(error);
             }
-            IsetPartTwo::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartTwo::Add(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a + b,
             ),
-            IsetPartTwo::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartTwo::Mul(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a * b,
             ),
-            IsetPartTwo::Leq(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartTwo::Leq(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| (a < b) as isize,
             ),
-            IsetPartTwo::Cmp(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartTwo::Cmp(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| (a == b) as isize,
             ),
-            IsetPartTwo::Jne(mode_a, mode_b) => intcode::execute_binary_op_se(
+            IsetPartTwo::Jne(mode_b, mode_c) => intcode::execute_binary_op_se(
                 command_signature,
-                (mode_a, mode_b),
+                (mode_b, mode_c),
                 &program,
                 |p, v| {
                     if p != 0 {
@@ -271,9 +271,9 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
                     }
                 },
             ),
-            IsetPartTwo::Je(mode_a, mode_b) => intcode::execute_binary_op_se(
+            IsetPartTwo::Je(mode_b, mode_c) => intcode::execute_binary_op_se(
                 command_signature,
-                (mode_a, mode_b),
+                (mode_b, mode_c),
                 &program,
                 |p, v| {
                     if p == 0 {
@@ -283,7 +283,7 @@ fn part_two(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
             ),
             IsetPartTwo::Out(mode) => match command_signature.next() {
                 Some(param) => {
-                    let output = intcode::process_parameter(&(param.borrow()), mode, &program);
+                    let output = intcode::process_parameter(param.borrow(), mode, &program);
                     outputs.push(output);
                 }
                 _ => unreachable!(),
@@ -366,21 +366,21 @@ fn part_one(data: &Vec<isize>, inputs: &[isize]) -> io::Result<isize> {
                 let error = io::Error::new(io::ErrorKind::Interrupted, msg);
                 return Err(error);
             }
-            IsetPartOne::Add(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartOne::Add(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a + b,
             ),
-            IsetPartOne::Mul(mode_a, mode_b) => intcode::execute_binary_op_nose(
+            IsetPartOne::Mul(mode_b, mode_c) => intcode::execute_binary_op_nose(
                 command_signature,
-                (mode_a, mode_b),
+                (ParamMode::Address(0), mode_b, mode_c),
                 &program,
                 |a, b| a * b,
             ),
             IsetPartOne::Out(mode) => match command_signature.next() {
                 Some(param) => {
-                    let output = intcode::process_parameter(&(param.borrow()), mode, &program);
+                    let output = intcode::process_parameter(param.borrow(), mode, &program);
                     outputs.push(output);
                 }
                 _ => unreachable!(),
